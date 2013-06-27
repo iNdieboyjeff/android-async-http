@@ -617,4 +617,8 @@ public class AsyncHttpClient {
             return -1;
         }
     }
+    
+    public static String getVersion() {
+    	return VERSION;
+    }
 }
