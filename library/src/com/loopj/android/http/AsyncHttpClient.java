@@ -210,7 +210,7 @@ public class AsyncHttpClient {
                 if (encoding != null) {
                     for (HeaderElement element : encoding.getElements()) {
                         if (element.getName().equalsIgnoreCase(ENCODING_GZIP)) {
-                            response.setEntity(new InflatingEntity(response.getEntity()));
+                            response.setEntity(new InflatingEntity(entity));
                             break;
                         }
                     }
@@ -310,6 +310,23 @@ public class AsyncHttpClient {
         final HttpParams httpParams = this.httpClient.getParams();
         httpParams.setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
     }
+    /**
+     * Sets the Proxy by it's hostname,port,username and password
+     *
+     * @param hostname the hostname (IP or DNS name)
+     * @param port     the port number. -1 indicates the scheme default port.
+     * @param username the username
+     * @param password the password
+     */
+     public void setProxy(String hostname,int port,String username,String password){
+         httpClient.getCredentialsProvider().setCredentials(
+    		    new AuthScope(hostname, port),
+    		    new UsernamePasswordCredentials(username, password));
+        final HttpHost proxy = new HttpHost(hostname, port);
+        final HttpParams httpParams = this.httpClient.getParams();
+        httpParams.setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
+     }
+
 
     /**
      * Sets the SSLSocketFactory to user when making requests. By default,
@@ -574,7 +591,7 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle the response.
      */
     public void post(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        post(context, url, paramsToEntity(params), null, responseHandler);
+        post(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
     }
 
     /**
@@ -606,7 +623,7 @@ public class AsyncHttpClient {
     public void post(Context context, String url, Header[] headers, RequestParams params, String contentType,
                      AsyncHttpResponseHandler responseHandler) {
         HttpEntityEnclosingRequestBase request = new HttpPost(url);
-        if (params != null) request.setEntity(paramsToEntity(params));
+        if (params != null) request.setEntity(paramsToEntity(params, responseHandler));
         if (headers != null) request.setHeaders(headers);
         sendRequest(httpClient, httpContext, request, contentType,
                 responseHandler, context);
@@ -668,7 +685,7 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle the response.
      */
     public void put(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        put(context, url, paramsToEntity(params), null, responseHandler);
+        put(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
     }
 
     /**
@@ -793,11 +810,18 @@ public class AsyncHttpClient {
         return url;
     }
 
-    private HttpEntity paramsToEntity(RequestParams params) {
+    private HttpEntity paramsToEntity(RequestParams params, AsyncHttpResponseHandler responseHandler) {
         HttpEntity entity = null;
 
-        if (params != null) {
-            entity = params.getEntity();
+        try {
+            if (params != null) {
+                entity = params.getEntity(responseHandler);
+            }
+        } catch (Throwable t) {
+            if (responseHandler != null)
+                responseHandler.sendFailureMessage(0, null, t, (String) null);
+            else
+                t.printStackTrace();
         }
 
         return entity;
