@@ -102,6 +102,7 @@ public class AsyncHttpClient {
     private static final int DEFAULT_MAX_CONNECTIONS = 10;
     private static final int DEFAULT_SOCKET_TIMEOUT = 10 * 1000;
     private static final int DEFAULT_MAX_RETRIES = 5;
+    private static final int DEFAULT_RETRY_SLEEP_TIME_MILLIS = 1500;
     private static final int DEFAULT_SOCKET_BUFFER_SIZE = 8192;
     private static final String HEADER_ACCEPT_ENCODING = "Accept-Encoding";
     private static final String ENCODING_GZIP = "gzip";
@@ -115,6 +116,7 @@ public class AsyncHttpClient {
     private ThreadPoolExecutor threadPool;
     private final Map<Context, List<WeakReference<Future<?>>>> requestMap;
     private final Map<String, String> clientHeaderMap;
+    private boolean isUrlEncodingEnabled = true;
 
 
     /**
@@ -144,15 +146,60 @@ public class AsyncHttpClient {
     }
 
     /**
-     * Creates a new AsyncHttpClient.
+     * Creates new AsyncHttpClient using given params
      *
-     * @param fixNoHttpResponseException See issue https://github.com/loopj/android-async-http/issues/143
-     * @param httpPort                   non-standard HTTP-only port
-     * @param httpsPort                  non-standard HTTPS-only port
+     * @param fixNoHttpResponseException Whether to fix or not issue, by ommiting SSL verification
+     * @param httpPort                   HTTP port to be used, must be greater than 0
+     * @param httpsPort                  HTTPS port to be used, must be greater than 0
      */
     public AsyncHttpClient(boolean fixNoHttpResponseException, int httpPort, int httpsPort) {
-        if (fixNoHttpResponseException)
+        this(getDefaultSchemeRegistry(fixNoHttpResponseException, httpPort, httpsPort));
+    }
+
+    /**
+     * Returns default instance of SchemeRegistry
+     *
+     * @param fixNoHttpResponseException Whether to fix or not issue, by ommiting SSL verification
+     * @param httpPort                   HTTP port to be used, must be greater than 0
+     * @param httpsPort                  HTTPS port to be used, must be greater than 0
+     */
+    private static SchemeRegistry getDefaultSchemeRegistry(boolean fixNoHttpResponseException, int httpPort, int httpsPort) {
+        if (fixNoHttpResponseException) {
             Log.d(LOG_TAG, "Beware! Using the fix is insecure, as it doesn't verify SSL certificates.");
+        }
+
+        if (httpPort < 1) {
+            httpPort = 80;
+            Log.d(LOG_TAG, "Invalid HTTP port number specified, defaulting to 80");
+        }
+
+        if (httpsPort < 1) {
+            httpsPort = 443;
+            Log.d(LOG_TAG, "Invalid HTTPS port number specified, defaulting to 443");
+        }
+
+        // Fix to SSL flaw in API < ICS
+        // See https://code.google.com/p/android/issues/detail?id=13117
+        SSLSocketFactory sslSocketFactory;
+        if (fixNoHttpResponseException)
+            sslSocketFactory = MySSLSocketFactory.getFixedSocketFactory();
+        else
+            sslSocketFactory = SSLSocketFactory.getSocketFactory();
+
+        SchemeRegistry schemeRegistry = new SchemeRegistry();
+        schemeRegistry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), httpPort));
+        schemeRegistry.register(new Scheme("https", sslSocketFactory, httpsPort));
+
+        return schemeRegistry;
+    }
+
+    /**
+     * Creates a new AsyncHttpClient.
+     *
+     * @param schemeRegistry SchemeRegistry to be used
+     */
+    public AsyncHttpClient(SchemeRegistry schemeRegistry) {
+
         BasicHttpParams httpParams = new BasicHttpParams();
 
         ConnManagerParams.setTimeout(httpParams, socketTimeout);
@@ -166,18 +213,6 @@ public class AsyncHttpClient {
 
         HttpProtocolParams.setVersion(httpParams, HttpVersion.HTTP_1_1);
         HttpProtocolParams.setUserAgent(httpParams, String.format("android-async-http/%s (http://loopj.com/android-async-http)", VERSION));
-
-        // Fix to SSL flaw in API < ICS
-        // See https://code.google.com/p/android/issues/detail?id=13117
-        SSLSocketFactory sslSocketFactory;
-        if (fixNoHttpResponseException)
-            sslSocketFactory = MySSLSocketFactory.getFixedSocketFactory();
-        else
-            sslSocketFactory = SSLSocketFactory.getSocketFactory();
-
-        SchemeRegistry schemeRegistry = new SchemeRegistry();
-        schemeRegistry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), httpPort));
-        schemeRegistry.register(new Scheme("https", sslSocketFactory, httpsPort));
 
         ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager(httpParams, schemeRegistry);
 
@@ -218,7 +253,7 @@ public class AsyncHttpClient {
             }
         });
 
-        httpClient.setHttpRequestRetryHandler(new RetryHandler(DEFAULT_MAX_RETRIES));
+        httpClient.setHttpRequestRetryHandler(new RetryHandler(DEFAULT_MAX_RETRIES, DEFAULT_RETRY_SLEEP_TIME_MILLIS));
     }
 
     /**
@@ -310,6 +345,7 @@ public class AsyncHttpClient {
         final HttpParams httpParams = this.httpClient.getParams();
         httpParams.setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
     }
+
     /**
      * Sets the Proxy by it's hostname,port,username and password
      *
@@ -318,14 +354,14 @@ public class AsyncHttpClient {
      * @param username the username
      * @param password the password
      */
-     public void setProxy(String hostname,int port,String username,String password){
-         httpClient.getCredentialsProvider().setCredentials(
-    		    new AuthScope(hostname, port),
-    		    new UsernamePasswordCredentials(username, password));
+    public void setProxy(String hostname, int port, String username, String password) {
+        httpClient.getCredentialsProvider().setCredentials(
+                new AuthScope(hostname, port),
+                new UsernamePasswordCredentials(username, password));
         final HttpHost proxy = new HttpHost(hostname, port);
         final HttpParams httpParams = this.httpClient.getParams();
         httpParams.setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
-     }
+    }
 
 
     /**
@@ -339,12 +375,12 @@ public class AsyncHttpClient {
     }
 
     /**
-     * Sets the maximum number of retries for a particular Request.
+     * Sets the maximum number of retries and timeout for a particular Request.
      *
      * @param retries maximum number of retries per request
      */
-    public void setMaxRetries(int retries) {
-        this.httpClient.setHttpRequestRetryHandler(new RetryHandler(retries));
+    public void setMaxRetriesAndTimeout(int retries, int timeout) {
+        this.httpClient.setHttpRequestRetryHandler(new RetryHandler(retries, timeout));
     }
 
     /**
@@ -468,7 +504,7 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle the response.
      */
     public void head(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, new HttpHead(getUrlWithQueryString(url, params)), null, responseHandler, context);
+        sendRequest(httpClient, httpContext, new HttpHead(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
     }
 
     /**
@@ -483,7 +519,7 @@ public class AsyncHttpClient {
      *                        the response.
      */
     public void head(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        HttpUriRequest request = new HttpHead(getUrlWithQueryString(url, params));
+        HttpUriRequest request = new HttpHead(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) request.setHeaders(headers);
         sendRequest(httpClient, httpContext, request, null, responseHandler,
                 context);
@@ -535,7 +571,7 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle the response.
      */
     public void get(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, new HttpGet(getUrlWithQueryString(url, params)), null, responseHandler, context);
+        sendRequest(httpClient, httpContext, new HttpGet(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
     }
 
     /**
@@ -550,7 +586,7 @@ public class AsyncHttpClient {
      *                        the response.
      */
     public void get(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        HttpUriRequest request = new HttpGet(getUrlWithQueryString(url, params));
+        HttpUriRequest request = new HttpGet(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) request.setHeaders(headers);
         sendRequest(httpClient, httpContext, request, null, responseHandler,
                 context);
@@ -769,13 +805,21 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle the response.
      */
     public void delete(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        HttpDelete httpDelete = new HttpDelete(getUrlWithQueryString(url, params));
+        HttpDelete httpDelete = new HttpDelete(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) httpDelete.setHeaders(headers);
         sendRequest(httpClient, httpContext, httpDelete, null, responseHandler, context);
     }
 
-
-    // Private stuff
+    /**
+     * Puts a new request in queue as a new thread in pool to be executed
+     *
+     * @param client          HttpClient to be used for request, can differ in single requests
+     * @param contentType     MIME body type, for POST and PUT requests, may be null
+     * @param context         Context of Android application, to hold the reference of request
+     * @param httpContext     HttpContext in which the request will be executed
+     * @param responseHandler ResponseHandler or its subclass to put the response into
+     * @param uriRequest      instance of HttpUriRequest, which means it must be of HttpDelete, HttpPost, HttpGet, HttpPut, etc.
+     */
     protected void sendRequest(DefaultHttpClient client, HttpContext httpContext, HttpUriRequest uriRequest, String contentType, AsyncHttpResponseHandler responseHandler, Context context) {
         if (contentType != null) {
             uriRequest.addHeader("Content-Type", contentType);
@@ -797,7 +841,26 @@ public class AsyncHttpClient {
         }
     }
 
-    public static String getUrlWithQueryString(String url, RequestParams params) {
+    /**
+     * Sets state of URL encoding feature, see bug #227, this method
+     * allows you to turn off and on this auto-magic feature on-demand.
+     *
+     * @param enabled desired state of feature
+     */
+    public void setURLEncodingEnabled(boolean enabled) {
+        this.isUrlEncodingEnabled = enabled;
+    }
+
+    /**
+     * Will encode url, if not disabled, and adds params on the end of it
+     *
+     * @param url    String with URL, should be valid URL without params
+     * @param params RequestParams to be appended on the end of URL
+     */
+    public static String getUrlWithQueryString(boolean isUrlEncodingEnabled, String url, RequestParams params) {
+        if (isUrlEncodingEnabled)
+            url = url.replace(" ", "%20");
+
         if (params != null) {
             String paramString = params.getParamString();
             if (!url.contains("?")) {
@@ -810,6 +873,13 @@ public class AsyncHttpClient {
         return url;
     }
 
+    /**
+     * Returns HttpEntity containing data from RequestParams included with request declaration.
+     * Allows also passing progress from upload via provided ResponseHandler
+     *
+     * @param params          additional request params
+     * @param responseHandler AsyncHttpResponseHandler or its subclass to be notified on progress
+     */
     private HttpEntity paramsToEntity(RequestParams params, AsyncHttpResponseHandler responseHandler) {
         HttpEntity entity = null;
 
@@ -827,6 +897,16 @@ public class AsyncHttpClient {
         return entity;
     }
 
+    public boolean isUrlEncodingEnabled(){
+        return isUrlEncodingEnabled;
+    }
+
+    /**
+     * Applicable only to HttpRequest methods extending HttpEntityEnclosingRequestBase, which is for example not DELETE
+     *
+     * @param entity      entity to be included within the request
+     * @param requestBase HttpRequest instance, must not be null
+     */
     private HttpEntityEnclosingRequestBase addEntityToRequestBase(HttpEntityEnclosingRequestBase requestBase, HttpEntity entity) {
         if (entity != null) {
             requestBase.setEntity(entity);
@@ -835,6 +915,9 @@ public class AsyncHttpClient {
         return requestBase;
     }
 
+    /**
+     * Enclosing entity to hold stream of gzip decoded data for accessing HttpEntity contents
+     */
     private static class InflatingEntity extends HttpEntityWrapper {
         public InflatingEntity(HttpEntity wrapped) {
             super(wrapped);
