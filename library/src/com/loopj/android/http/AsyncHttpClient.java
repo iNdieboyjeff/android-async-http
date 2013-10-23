@@ -95,8 +95,6 @@ import java.util.zip.GZIPInputStream;
  * </pre>
  */
 public class AsyncHttpClient {
-    // This property won't be available soon, don't use it
-    @Deprecated
     private static final String VERSION = "1.4.4";
 
     private static final int DEFAULT_MAX_CONNECTIONS = 10;
@@ -108,8 +106,8 @@ public class AsyncHttpClient {
     private static final String ENCODING_GZIP = "gzip";
     private static final String LOG_TAG = "AsyncHttpClient";
 
-    private static int maxConnections = DEFAULT_MAX_CONNECTIONS;
-    private static int socketTimeout = DEFAULT_SOCKET_TIMEOUT;
+    private int maxConnections = DEFAULT_MAX_CONNECTIONS;
+    private int timeout = DEFAULT_SOCKET_TIMEOUT;
 
     private final DefaultHttpClient httpClient;
     private final HttpContext httpContext;
@@ -117,7 +115,6 @@ public class AsyncHttpClient {
     private final Map<Context, List<WeakReference<Future<?>>>> requestMap;
     private final Map<String, String> clientHeaderMap;
     private boolean isUrlEncodingEnabled = true;
-
 
     /**
      * Creates a new AsyncHttpClient with default constructor arguments values
@@ -202,12 +199,12 @@ public class AsyncHttpClient {
 
         BasicHttpParams httpParams = new BasicHttpParams();
 
-        ConnManagerParams.setTimeout(httpParams, socketTimeout);
+        ConnManagerParams.setTimeout(httpParams, timeout);
         ConnManagerParams.setMaxConnectionsPerRoute(httpParams, new ConnPerRouteBean(maxConnections));
         ConnManagerParams.setMaxTotalConnections(httpParams, DEFAULT_MAX_CONNECTIONS);
 
-        HttpConnectionParams.setSoTimeout(httpParams, socketTimeout);
-        HttpConnectionParams.setConnectionTimeout(httpParams, socketTimeout);
+        HttpConnectionParams.setSoTimeout(httpParams, timeout);
+        HttpConnectionParams.setConnectionTimeout(httpParams, timeout);
         HttpConnectionParams.setTcpNoDelay(httpParams, true);
         HttpConnectionParams.setSocketBufferSize(httpParams, DEFAULT_SOCKET_BUFFER_SIZE);
 
@@ -322,16 +319,51 @@ public class AsyncHttpClient {
         HttpProtocolParams.setUserAgent(this.httpClient.getParams(), userAgent);
     }
 
+
     /**
-     * Set the connection timeout. By default, 10 seconds.
+     * Returns current limit of parallel connections
      *
-     * @param timeout the connect/socket timeout in milliseconds
+     * @return maximum limit of parallel connections, default is 10
+     */
+    public int getMaxConnections() {
+        return maxConnections;
+    }
+
+    /**
+     * Sets maximum limit of parallel connections
+     *
+     * @param maxConnections maximum parallel connections, must be at least 1
+     */
+    public void setMaxConnections(int maxConnections) {
+        if (maxConnections < 1)
+            maxConnections = DEFAULT_MAX_CONNECTIONS;
+        this.maxConnections = maxConnections;
+        final HttpParams httpParams = this.httpClient.getParams();
+        ConnManagerParams.setMaxConnectionsPerRoute(httpParams, new ConnPerRouteBean(this.maxConnections));
+    }
+
+    /**
+     * Returns current socket timeout limit (milliseconds), default is 10000 (10sec)
+     *
+     * @return Socket Timeout limit in milliseconds
+     */
+    public int getTimeout() {
+        return timeout;
+    }
+
+    /**
+     * Set the connection and socket timeout. By default, 10 seconds.
+     *
+     * @param timeout the connect/socket timeout in milliseconds, at least 1 second
      */
     public void setTimeout(int timeout) {
+        if (timeout < 1000)
+            timeout = DEFAULT_SOCKET_TIMEOUT;
+        this.timeout = timeout;
         final HttpParams httpParams = this.httpClient.getParams();
-        ConnManagerParams.setTimeout(httpParams, timeout);
-        HttpConnectionParams.setSoTimeout(httpParams, timeout);
-        HttpConnectionParams.setConnectionTimeout(httpParams, timeout);
+        ConnManagerParams.setTimeout(httpParams, this.timeout);
+        HttpConnectionParams.setSoTimeout(httpParams, this.timeout);
+        HttpConnectionParams.setConnectionTimeout(httpParams, this.timeout);
     }
 
     /**
@@ -469,8 +501,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void head(String url, AsyncHttpResponseHandler responseHandler) {
-        head(null, url, null, responseHandler);
+    public RequestHandle head(String url, AsyncHttpResponseHandler responseHandler) {
+        return head(null, url, null, responseHandler);
     }
 
     /**
@@ -480,8 +512,8 @@ public class AsyncHttpClient {
      * @param params          additional HEAD parameters to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void head(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        head(null, url, params, responseHandler);
+    public RequestHandle head(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return head(null, url, params, responseHandler);
     }
 
     /**
@@ -491,8 +523,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void head(Context context, String url, AsyncHttpResponseHandler responseHandler) {
-        head(context, url, null, responseHandler);
+    public RequestHandle head(Context context, String url, AsyncHttpResponseHandler responseHandler) {
+        return head(context, url, null, responseHandler);
     }
 
     /**
@@ -503,8 +535,8 @@ public class AsyncHttpClient {
      * @param params          additional HEAD parameters to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void head(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, new HttpHead(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
+    public RequestHandle head(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return sendRequest(httpClient, httpContext, new HttpHead(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
     }
 
     /**
@@ -518,10 +550,10 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle
      *                        the response.
      */
-    public void head(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle head(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
         HttpUriRequest request = new HttpHead(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) request.setHeaders(headers);
-        sendRequest(httpClient, httpContext, request, null, responseHandler,
+        return sendRequest(httpClient, httpContext, request, null, responseHandler,
                 context);
     }
 
@@ -536,8 +568,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void get(String url, AsyncHttpResponseHandler responseHandler) {
-        get(null, url, null, responseHandler);
+    public RequestHandle get(String url, AsyncHttpResponseHandler responseHandler) {
+        return get(null, url, null, responseHandler);
     }
 
     /**
@@ -547,8 +579,8 @@ public class AsyncHttpClient {
      * @param params          additional GET parameters to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void get(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        get(null, url, params, responseHandler);
+    public RequestHandle get(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return get(null, url, params, responseHandler);
     }
 
     /**
@@ -558,8 +590,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void get(Context context, String url, AsyncHttpResponseHandler responseHandler) {
-        get(context, url, null, responseHandler);
+    public RequestHandle get(Context context, String url, AsyncHttpResponseHandler responseHandler) {
+        return get(context, url, null, responseHandler);
     }
 
     /**
@@ -570,8 +602,8 @@ public class AsyncHttpClient {
      * @param params          additional GET parameters to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void get(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, new HttpGet(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
+    public RequestHandle get(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return sendRequest(httpClient, httpContext, new HttpGet(getUrlWithQueryString(isUrlEncodingEnabled, url, params)), null, responseHandler, context);
     }
 
     /**
@@ -585,10 +617,10 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle
      *                        the response.
      */
-    public void get(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle get(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
         HttpUriRequest request = new HttpGet(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) request.setHeaders(headers);
-        sendRequest(httpClient, httpContext, request, null, responseHandler,
+        return sendRequest(httpClient, httpContext, request, null, responseHandler,
                 context);
     }
 
@@ -603,8 +635,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void post(String url, AsyncHttpResponseHandler responseHandler) {
-        post(null, url, null, responseHandler);
+    public RequestHandle post(String url, AsyncHttpResponseHandler responseHandler) {
+        return post(null, url, null, responseHandler);
     }
 
     /**
@@ -614,8 +646,8 @@ public class AsyncHttpClient {
      * @param params          additional POST parameters or files to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void post(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        post(null, url, params, responseHandler);
+    public RequestHandle post(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return post(null, url, params, responseHandler);
     }
 
     /**
@@ -626,8 +658,8 @@ public class AsyncHttpClient {
      * @param params          additional POST parameters or files to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void post(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        post(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
+    public RequestHandle post(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return post(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
     }
 
     /**
@@ -639,8 +671,8 @@ public class AsyncHttpClient {
      * @param contentType     the content type of the payload you are sending, for example application/json if sending a json payload.
      * @param responseHandler the response ha   ndler instance that should handle the response.
      */
-    public void post(Context context, String url, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPost(url), entity), contentType, responseHandler, context);
+    public RequestHandle post(Context context, String url, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
+        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPost(url), entity), contentType, responseHandler, context);
     }
 
     /**
@@ -656,12 +688,12 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle
      *                        the response.
      */
-    public void post(Context context, String url, Header[] headers, RequestParams params, String contentType,
+    public RequestHandle post(Context context, String url, Header[] headers, RequestParams params, String contentType,
                      AsyncHttpResponseHandler responseHandler) {
         HttpEntityEnclosingRequestBase request = new HttpPost(url);
         if (params != null) request.setEntity(paramsToEntity(params, responseHandler));
         if (headers != null) request.setHeaders(headers);
-        sendRequest(httpClient, httpContext, request, contentType,
+        return sendRequest(httpClient, httpContext, request, contentType,
                 responseHandler, context);
     }
 
@@ -680,11 +712,11 @@ public class AsyncHttpClient {
      * @param responseHandler the response handler instance that should handle
      *                        the response.
      */
-    public void post(Context context, String url, Header[] headers, HttpEntity entity, String contentType,
+    public RequestHandle post(Context context, String url, Header[] headers, HttpEntity entity, String contentType,
                      AsyncHttpResponseHandler responseHandler) {
         HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPost(url), entity);
         if (headers != null) request.setHeaders(headers);
-        sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
+        return sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
     }
 
     //
@@ -697,8 +729,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void put(String url, AsyncHttpResponseHandler responseHandler) {
-        put(null, url, null, responseHandler);
+    public RequestHandle put(String url, AsyncHttpResponseHandler responseHandler) {
+        return put(null, url, null, responseHandler);
     }
 
     /**
@@ -708,8 +740,8 @@ public class AsyncHttpClient {
      * @param params          additional PUT parameters or files to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void put(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        put(null, url, params, responseHandler);
+    public RequestHandle put(String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return put(null, url, params, responseHandler);
     }
 
     /**
@@ -720,8 +752,8 @@ public class AsyncHttpClient {
      * @param params          additional PUT parameters or files to send with the request.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void put(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
-        put(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
+    public RequestHandle put(Context context, String url, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+        return put(context, url, paramsToEntity(params, responseHandler), null, responseHandler);
     }
 
     /**
@@ -734,8 +766,8 @@ public class AsyncHttpClient {
      * @param contentType     the content type of the payload you are sending, for example application/json if sending a json payload.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void put(Context context, String url, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
-        sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPut(url), entity), contentType, responseHandler, context);
+    public RequestHandle put(Context context, String url, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
+        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPut(url), entity), contentType, responseHandler, context);
     }
 
     /**
@@ -749,10 +781,10 @@ public class AsyncHttpClient {
      * @param contentType     the content type of the payload you are sending, for example application/json if sending a json payload.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void put(Context context, String url, Header[] headers, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle put(Context context, String url, Header[] headers, HttpEntity entity, String contentType, AsyncHttpResponseHandler responseHandler) {
         HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPut(url), entity);
         if (headers != null) request.setHeaders(headers);
-        sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
+        return sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
     }
 
     //
@@ -765,8 +797,8 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void delete(String url, AsyncHttpResponseHandler responseHandler) {
-        delete(null, url, responseHandler);
+    public RequestHandle delete(String url, AsyncHttpResponseHandler responseHandler) {
+        return delete(null, url, responseHandler);
     }
 
     /**
@@ -776,9 +808,9 @@ public class AsyncHttpClient {
      * @param url             the URL to send the request to.
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void delete(Context context, String url, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle delete(Context context, String url, AsyncHttpResponseHandler responseHandler) {
         final HttpDelete delete = new HttpDelete(url);
-        sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
+        return sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
     }
 
     /**
@@ -789,10 +821,10 @@ public class AsyncHttpClient {
      * @param headers         set one-time headers for this request
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void delete(Context context, String url, Header[] headers, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle delete(Context context, String url, Header[] headers, AsyncHttpResponseHandler responseHandler) {
         final HttpDelete delete = new HttpDelete(url);
         if (headers != null) delete.setHeaders(headers);
-        sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
+        return sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
     }
 
     /**
@@ -804,10 +836,10 @@ public class AsyncHttpClient {
      * @param params          additional DELETE parameters or files to send along with request
      * @param responseHandler the response handler instance that should handle the response.
      */
-    public void delete(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
+    public RequestHandle delete(Context context, String url, Header[] headers, RequestParams params, AsyncHttpResponseHandler responseHandler) {
         HttpDelete httpDelete = new HttpDelete(getUrlWithQueryString(isUrlEncodingEnabled, url, params));
         if (headers != null) httpDelete.setHeaders(headers);
-        sendRequest(httpClient, httpContext, httpDelete, null, responseHandler, context);
+        return sendRequest(httpClient, httpContext, httpDelete, null, responseHandler, context);
     }
 
     /**
@@ -820,7 +852,7 @@ public class AsyncHttpClient {
      * @param responseHandler ResponseHandler or its subclass to put the response into
      * @param uriRequest      instance of HttpUriRequest, which means it must be of HttpDelete, HttpPost, HttpGet, HttpPut, etc.
      */
-    protected void sendRequest(DefaultHttpClient client, HttpContext httpContext, HttpUriRequest uriRequest, String contentType, AsyncHttpResponseHandler responseHandler, Context context) {
+    protected RequestHandle sendRequest(DefaultHttpClient client, HttpContext httpContext, HttpUriRequest uriRequest, String contentType, AsyncHttpResponseHandler responseHandler, Context context) {
         if (contentType != null) {
             uriRequest.addHeader("Content-Type", contentType);
         }
@@ -839,6 +871,8 @@ public class AsyncHttpClient {
 
             // TODO: Remove dead weakrefs from requestLists?
         }
+        
+        return new RequestHandle(request);
     }
 
     /**
@@ -889,7 +923,7 @@ public class AsyncHttpClient {
             }
         } catch (Throwable t) {
             if (responseHandler != null)
-                responseHandler.sendFailureMessage(0, null, t, (String) null);
+                responseHandler.sendFailureMessage(0, null, null, t);
             else
                 t.printStackTrace();
         }
@@ -897,7 +931,7 @@ public class AsyncHttpClient {
         return entity;
     }
 
-    public boolean isUrlEncodingEnabled(){
+    public boolean isUrlEncodingEnabled() {
         return isUrlEncodingEnabled;
     }
 
