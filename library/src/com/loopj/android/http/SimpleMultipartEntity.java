@@ -56,6 +56,7 @@ class SimpleMultipartEntity implements HttpEntity {
     private String boundary;
     private byte[] boundaryLine;
     private byte[] boundaryEnd;
+    private boolean isRepeatable = false;
 
     private List<FilePart> fileParts = new ArrayList<FilePart>();
 
@@ -63,13 +64,13 @@ class SimpleMultipartEntity implements HttpEntity {
     // boundary
     private ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    private AsyncHttpResponseHandler progressHandler;
+    private ResponseHandlerInterface progressHandler;
 
     private int bytesWritten;
 
     private int totalSize;
 
-    public SimpleMultipartEntity(AsyncHttpResponseHandler progressHandler) {
+    public SimpleMultipartEntity(ResponseHandlerInterface progressHandler) {
         final StringBuilder buf = new StringBuilder();
         final Random rand = new Random();
         for (int i = 0; i < 30; i++) {
@@ -242,9 +243,13 @@ class SimpleMultipartEntity implements HttpEntity {
         return false;
     }
 
+    public void setIsRepeatable(boolean isRepeatable) {
+        this.isRepeatable = isRepeatable;
+    }
+
     @Override
     public boolean isRepeatable() {
-        return false;
+        return isRepeatable;
     }
 
     @Override

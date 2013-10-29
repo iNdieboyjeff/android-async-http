@@ -1,26 +1,27 @@
 package com.loopj.android.http.sample;
 
-import org.apache.http.Header;
-
 import com.loopj.android.http.AsyncHttpClient;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 
-public class GetSample extends SampleParentActivity {
-    private static final String LOG_TAG = "GetSample";
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+
+public class PostSample extends SampleParentActivity {
+    private static final String LOG_TAG = "PostSample";
 
     @Override
-    protected void executeSample(AsyncHttpClient client, String URL, AsyncHttpResponseHandler responseHandler) {
-        client.get(this, URL, responseHandler);
+    protected void executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, AsyncHttpResponseHandler responseHandler) {
+        client.post(this, URL, headers, entity, null, responseHandler);
     }
 
     @Override
     protected int getSampleTitle() {
-        return R.string.title_get_sample;
+        return R.string.title_post_sample;
     }
 
     @Override
     protected boolean isRequestBodyAllowed() {
-        return false;
+        return true;
     }
 
     @Override
@@ -30,7 +31,7 @@ public class GetSample extends SampleParentActivity {
 
     @Override
     protected String getDefaultURL() {
-        return "https://raw.github.com/loopj/android-async-http/master/README.md";
+        return "http://httpbin.org/post";
     }
 
     @Override
@@ -61,3 +62,4 @@ public class GetSample extends SampleParentActivity {
         };
     }
 }
+

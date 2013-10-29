@@ -34,17 +34,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
+import java.net.URI;
 
 /**
- * Used to intercept and handle the responses from requests made using
- * {@link AsyncHttpClient}. The {@link #onSuccess(int, org.apache.http.Header[], byte[])} method is
- * designed to be anonymously overridden with your own response handling code.
- * <p>&nbsp;</p>
- * Additionally, you can override the {@link #onFailure(int, org.apache.http.Header[], byte[], Throwable)},
- * {@link #onStart()}, {@link #onFinish()}, {@link #onRetry()} and {@link #onProgress(int, int)} methods as required.
- * <p>&nbsp;</p>
- * For example:
- * <p>&nbsp;</p>
+ * Used to intercept and handle the responses from requests made using {@link AsyncHttpClient}. The
+ * {@link #onSuccess(int, org.apache.http.Header[], byte[])} method is designed to be anonymously
+ * overridden with your own response handling code. <p>&nbsp;</p> Additionally, you can override the
+ * {@link #onFailure(int, org.apache.http.Header[], byte[], Throwable)}, {@link #onStart()}, {@link
+ * #onFinish()}, {@link #onRetry()} and {@link #onProgress(int, int)} methods as required.
+ * <p>&nbsp;</p> For example: <p>&nbsp;</p>
  * <pre>
  * AsyncHttpClient client = new AsyncHttpClient();
  * client.get("http://www.google.com", new AsyncHttpResponseHandler() {
@@ -59,7 +57,8 @@ import java.lang.ref.WeakReference;
  *     }
  *
  *     &#064;Override
- *     public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+ *     public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error)
+ * {
  *         // Response failed :(
  *     }
  *
@@ -80,7 +79,7 @@ import java.lang.ref.WeakReference;
  * });
  * </pre>
  */
-public class AsyncHttpResponseHandler {
+public class AsyncHttpResponseHandler implements ResponseHandlerInterface {
     private static final String LOG_TAG = "AsyncHttpResponseHandler";
 
     protected static final int SUCCESS_MESSAGE = 0;
@@ -96,6 +95,29 @@ public class AsyncHttpResponseHandler {
     public static final String DEFAULT_CHARSET = "UTF-8";
     private String responseCharset = DEFAULT_CHARSET;
     private Boolean useSynchronousMode = false;
+
+    private URI requestURI = null;
+    private Header[] requestHeaders = null;
+
+    @Override
+    public URI getRequestURI() {
+        return this.requestURI;
+    }
+
+    @Override
+    public Header[] getRequestHeaders() {
+        return this.requestHeaders;
+    }
+
+    @Override
+    public void setRequestURI(URI requestURI) {
+        this.requestURI = requestURI;
+    }
+
+    @Override
+    public void setRequestHeaders(Header[] requestHeaders) {
+        this.requestHeaders = requestHeaders;
+    }
 
     // avoid leaks by using a non-anonymous handler class
     // with a weak reference
@@ -119,12 +141,8 @@ public class AsyncHttpResponseHandler {
         return (useSynchronousMode);
     }
 
-    /**
-     * Set the response handler to use synchronous mode or not
-     *
-     * @param value true indicates that synchronous mode should be used
-     */
-    public void setUseSynchronousMode(Boolean value) {
+    @Override
+    public void setUseSynchronousMode(boolean value) {
         useSynchronousMode = value;
     }
 
@@ -173,7 +191,8 @@ public class AsyncHttpResponseHandler {
     }
 
     /**
-     * Fired in all cases when the request is finished, after both success and failure, override to handle in your own code
+     * Fired in all cases when the request is finished, after both success and failure, override to
+     * handle in your own code
      */
     public void onFinish() {
     }
@@ -311,27 +330,27 @@ public class AsyncHttpResponseHandler {
     // Pre-processing of messages (executes in background threadpool thread)
     //
 
-    protected void sendProgressMessage(int bytesWritten, int totalSize) {
-        sendMessage(obtainMessage(PROGRESS_MESSAGE, new Object[]{bytesWritten, totalSize}));
+    final public void sendProgressMessage(int bytesWritten, int bytesTotal) {
+        sendMessage(obtainMessage(PROGRESS_MESSAGE, new Object[]{bytesWritten, bytesTotal}));
     }
 
-    protected void sendSuccessMessage(int statusCode, Header[] headers, byte[] responseBody) {
+    final public void sendSuccessMessage(int statusCode, Header[] headers, byte[] responseBody) {
         sendMessage(obtainMessage(SUCCESS_MESSAGE, new Object[]{statusCode, headers, responseBody}));
     }
 
-    protected void sendFailureMessage(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+    final public void sendFailureMessage(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
         sendMessage(obtainMessage(FAILURE_MESSAGE, new Object[]{statusCode, headers, responseBody, error}));
     }
 
-    protected void sendStartMessage() {
+    final public void sendStartMessage() {
         sendMessage(obtainMessage(START_MESSAGE, null));
     }
 
-    protected void sendFinishMessage() {
+    final public void sendFinishMessage() {
         sendMessage(obtainMessage(FINISH_MESSAGE, null));
     }
 
-    protected void sendRetryMessage() {
+    final public void sendRetryMessage() {
         sendMessage(obtainMessage(RETRY_MESSAGE, null));
     }
 
@@ -342,17 +361,19 @@ public class AsyncHttpResponseHandler {
         switch (msg.what) {
             case SUCCESS_MESSAGE:
                 response = (Object[]) msg.obj;
-                if (response != null && response.length >= 3)
+                if (response != null && response.length >= 3) {
                     onSuccess((Integer) response[0], (Header[]) response[1], (byte[]) response[2]);
-                else
+                } else {
                     Log.e(LOG_TAG, "SUCCESS_MESSAGE didn't got enough params");
+                }
                 break;
             case FAILURE_MESSAGE:
                 response = (Object[]) msg.obj;
-                if (response != null && response.length >= 4)
+                if (response != null && response.length >= 4) {
                     onFailure((Integer) response[0], (Header[]) response[1], (byte[]) response[2], (Throwable) response[3]);
-                else
+                } else {
                     Log.e(LOG_TAG, "FAILURE_MESSAGE didn't got enough params");
+                }
                 break;
             case START_MESSAGE:
                 onStart();
@@ -362,10 +383,15 @@ public class AsyncHttpResponseHandler {
                 break;
             case PROGRESS_MESSAGE:
                 response = (Object[]) msg.obj;
-                if (response != null && response.length >= 2)
-                    onProgress((Integer) response[0], (Integer) response[1]);
-                else
+                if (response != null && response.length >= 2) {
+                    try {
+                        onProgress((Integer) response[0], (Integer) response[1]);
+                    } catch (Throwable t) {
+                        Log.e(LOG_TAG, "custom onProgress contains an error", t);
+                    }
+                } else {
                     Log.e(LOG_TAG, "PROGRESS_MESSAGE didn't got enough params");
+                }
                 break;
             case RETRY_MESSAGE:
                 onRetry();
@@ -401,8 +427,8 @@ public class AsyncHttpResponseHandler {
         return msg;
     }
 
-    // Interface to AsyncHttpRequest
-    void sendResponseMessage(HttpResponse response) throws IOException {
+    @Override
+    public void sendResponseMessage(HttpResponse response) throws IOException {
         // do not process if request has been cancelled
         if (!Thread.currentThread().isInterrupted()) {
             StatusLine status = response.getStatusLine();
@@ -445,7 +471,7 @@ public class AsyncHttpResponseHandler {
                     } finally {
                         instream.close();
                     }
-                    responseBody = buffer.buffer();
+                    responseBody = buffer.toByteArray();
                 } catch (OutOfMemoryError e) {
                     System.gc();
                     throw new IOException("File too large to fit into available memory");

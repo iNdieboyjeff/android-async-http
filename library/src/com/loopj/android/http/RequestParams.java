@@ -31,6 +31,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -39,11 +40,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A collection of string request parameters or files to send along with
- * requests made from an {@link AsyncHttpClient} instance.
- * <p>&nbsp;</p>
- * For example:
- * <p>&nbsp;</p>
+ * A collection of string request parameters or files to send along with requests made from an
+ * {@link AsyncHttpClient} instance. <p>&nbsp;</p> For example: <p>&nbsp;</p>
  * <pre>
  * RequestParams params = new RequestParams();
  * params.put("username", "james");
@@ -52,35 +50,35 @@ import java.util.concurrent.ConcurrentHashMap;
  * params.put("profile_picture", new File("pic.jpg")); // Upload a File
  * params.put("profile_picture2", someInputStream); // Upload an InputStream
  * params.put("profile_picture3", new ByteArrayInputStream(someBytes)); // Upload some bytes
- * 
- * Map<String, String> map = new HashMap<String, String>();
+ *
+ * Map&lt;String, String&gt; map = new HashMap&lt;String, String&gt;();
  * map.put("first_name", "James");
  * map.put("last_name", "Smith");
- * params.put("user", map); // url params: "user[first_name]=James&user[last_name]=Smith"
+ * params.put("user", map); // url params: "user[first_name]=James&amp;user[last_name]=Smith"
  *
- * Set<String> set = new HashSet<String>(); // unordered collection
+ * Set&lt;String&gt; set = new HashSet&lt;String&gt;(); // unordered collection
  * set.add("music");
  * set.add("art");
- * params.put("like", set); // url params: "like=music&like=art"
- * 
- * List<String> list = new ArrayList<String>(); // Ordered collection
+ * params.put("like", set); // url params: "like=music&amp;like=art"
+ *
+ * List&lt;String&gt; list = new ArrayList&lt;String&gt;(); // Ordered collection
  * list.add("Java");
  * list.add("C");
- * params.put("languages", list); // url params: "languages[]=Java&languages[]=C"
- * 
+ * params.put("languages", list); // url params: "languages[]=Java&amp;languages[]=C"
+ *
  * String[] colors = { "blue", "yellow" }; // Ordered collection
- * params.put("colors", colors); // url params: "colors[]=blue&colors[]=yellow"
- * 
- * List<Map<String, String>> listOfMaps = new ArrayList<Map<String, String>>();
- * Map<String, String> user1 = new HashMap<String, String>();
+ * params.put("colors", colors); // url params: "colors[]=blue&amp;colors[]=yellow"
+ *
+ * List&lt;Map&lt;String, String&gt;&gt; listOfMaps = new ArrayList&lt;Map&lt;String, String&gt;&gt;();
+ * Map&lt;String, String&gt; user1 = new HashMap&lt;String, String&gt;();
  * user1.put("age", "30");
  * user1.put("gender", "male");
- * Map<String, String> user2 = new HashMap<String, String>();
+ * Map&lt;String, String&gt; user2 = new HashMap&lt;String, String&gt;();
  * user2.put("age", "25");
  * user2.put("gender", "female");
  * listOfMaps.add(user1);
  * listOfMaps.add(user2);
- * params.put("users", listOfMaps); // url params: "users[][age]=30&users[][gender]=male&users[][age]=25&users[][gender]=female"
+ * params.put("users", listOfMaps); // url params: "users[][age]=30&amp;users[][gender]=male&amp;users[][age]=25&amp;users[][gender]=female"
  *
  * AsyncHttpClient client = new AsyncHttpClient();
  * client.post("http://myendpoint.com", params, responseHandler);
@@ -88,53 +86,53 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class RequestParams {
 
-    private static final String LOG_TAG = "RequestParams";
-
+    protected boolean isRepeatable = false;
     protected ConcurrentHashMap<String, String> urlParams;
     protected ConcurrentHashMap<String, StreamWrapper> streamParams;
     protected ConcurrentHashMap<String, FileWrapper> fileParams;
     protected ConcurrentHashMap<String, Object> urlParamsWithObjects;
 
     /**
-     * Constructs a new empty <code>RequestParams</code> instance.
+     * Constructs a new empty {@code RequestParams} instance.
      */
     public RequestParams() {
-        init();
+        this((Map<String, String>) null);
     }
 
     /**
-     * Constructs a new RequestParams instance containing the key/value
-     * string params from the specified map.
+     * Constructs a new RequestParams instance containing the key/value string params from the
+     * specified map.
      *
      * @param source the source key/value string map to add.
      */
     public RequestParams(Map<String, String> source) {
         init();
-
-        for (Map.Entry<String, String> entry : source.entrySet()) {
-            put(entry.getKey(), entry.getValue());
+        if (source != null) {
+            for (Map.Entry<String, String> entry : source.entrySet()) {
+                put(entry.getKey(), entry.getValue());
+            }
         }
     }
 
     /**
-     * Constructs a new RequestParams instance and populate it with a single
-     * initial key/value string param.
+     * Constructs a new RequestParams instance and populate it with a single initial key/value
+     * string param.
      *
      * @param key   the key name for the intial param.
      * @param value the value string for the initial param.
      */
-    public RequestParams(String key, String value) {
-        init();
-
-        put(key, value);
+    public RequestParams(final String key, final String value) {
+        this(new HashMap<String, String>() {{
+            put(key, value);
+        }});
     }
 
     /**
-     * Constructs a new RequestParams instance and populate it with multiple
-     * initial key/value string param.
+     * Constructs a new RequestParams instance and populate it with multiple initial key/value
+     * string param.
      *
-     * @param keysAndValues a sequence of keys and values. Objects are
-     *                      automatically converted to Strings (including the value {@code null}).
+     * @param keysAndValues a sequence of keys and values. Objects are automatically converted to
+     *                      Strings (including the value {@code null}).
      * @throws IllegalArgumentException if the number of arguments isn't even.
      */
     public RequestParams(Object... keysAndValues) {
@@ -223,17 +221,19 @@ public class RequestParams {
 
     /**
      * Adds param with non-string value (e.g. Map, List, Set).
+     *
      * @param key   the key name for the new param.
      * @param value the non-string value object for the new param.
      */
-    public void put(String key, Object value)  {
+    public void put(String key, Object value) {
         if (key != null && value != null) {
             urlParamsWithObjects.put(key, value);
         }
     }
-            
+
     /**
      * Adds string value to param which can have more than one value.
+     *
      * @param key   the key name for the param, either existing or new.
      * @param value the value string for the new param.
      */
@@ -252,7 +252,7 @@ public class RequestParams {
             }
         }
     }
-    
+
     /**
      * Removes a parameter from the request.
      *
@@ -299,7 +299,7 @@ public class RequestParams {
         for (BasicNameValuePair kv : params) {
             if (result.length() > 0)
                 result.append("&");
-            
+
             result.append(kv.getName());
             result.append("=");
             result.append(kv.getValue());
@@ -308,14 +308,19 @@ public class RequestParams {
         return result.toString();
     }
 
+    public void setHttpEntityIsRepeatable(boolean isRepeatable) {
+        this.isRepeatable = isRepeatable;
+    }
+
     /**
      * Returns an HttpEntity containing all request parameters
      *
      * @param progressHandler HttpResponseHandler for reporting progress on entity submit
-     * @return HttpEntity resulting HttpEntity to be included along with {@link org.apache.http.client.methods.HttpEntityEnclosingRequestBase}
+     * @return HttpEntity resulting HttpEntity to be included along with {@link
+     * org.apache.http.client.methods.HttpEntityEnclosingRequestBase}
      * @throws IOException if one of the streams cannot be read
      */
-    public HttpEntity getEntity(AsyncHttpResponseHandler progressHandler) throws IOException {
+    public HttpEntity getEntity(ResponseHandlerInterface progressHandler) throws IOException {
         if (streamParams.isEmpty() && fileParams.isEmpty()) {
             return createFormEntity();
         } else {
@@ -331,8 +336,9 @@ public class RequestParams {
         }
     }
 
-    private HttpEntity createMultipartEntity(AsyncHttpResponseHandler progressHandler) throws IOException {
+    private HttpEntity createMultipartEntity(ResponseHandlerInterface progressHandler) throws IOException {
         SimpleMultipartEntity entity = new SimpleMultipartEntity(progressHandler);
+        entity.setIsRepeatable(isRepeatable);
 
         // Add string params
         for (ConcurrentHashMap.Entry<String, String> entry : urlParams.entrySet()) {
@@ -342,7 +348,7 @@ public class RequestParams {
         // Add non-string params
         List<BasicNameValuePair> params = getParamsList(null, urlParamsWithObjects);
         for (BasicNameValuePair kv : params) {
-        	entity.addPart(kv.getName(), kv.getValue());
+            entity.addPart(kv.getName(), kv.getValue());
         }
 
         // Add stream params
@@ -416,7 +422,7 @@ public class RequestParams {
         }
         return params;
     }
-    
+
     protected String getParamString() {
         return URLEncodedUtils.format(getParamsList(), HTTP.UTF_8);
     }

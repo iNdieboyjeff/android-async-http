@@ -1,25 +1,27 @@
 package com.loopj.android.http.sample;
 
-import org.apache.http.Header;
-
 import com.loopj.android.http.AsyncHttpClient;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 
-public class PostSample extends SampleParentActivity {
-    private static final String LOG_TAG = "PostSample";
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+
+public class DeleteSample extends SampleParentActivity {
+    private static final String LOG_TAG = "DeleteSample";
 
     @Override
-    protected void executeSample(AsyncHttpClient client, String URL, AsyncHttpResponseHandler responseHandler) {
-        client.post(this, URL, null, responseHandler);
+    protected void executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, AsyncHttpResponseHandler responseHandler) {
+        client.delete(this, URL, headers, null, responseHandler);
     }
 
     @Override
     protected int getSampleTitle() {
-        return R.string.title_post_sample;
+        return R.string.title_delete_sample;
     }
 
     @Override
     protected boolean isRequestBodyAllowed() {
+        // HttpDelete is not HttpEntityEnclosingRequestBase, thus cannot contain body
         return false;
     }
 
@@ -30,7 +32,7 @@ public class PostSample extends SampleParentActivity {
 
     @Override
     protected String getDefaultURL() {
-        return "http://www.google.com";
+        return "http://httpbin.org/delete";
     }
 
     @Override
@@ -50,7 +52,7 @@ public class PostSample extends SampleParentActivity {
             }
 
             @Override
-            public void onFailure(int statusCode, Header[] headers,	byte[] errorResponse, Throwable e) {
+            public void onFailure(int statusCode, Header[] headers, byte[] errorResponse, Throwable e) {
                 debugHeaders(LOG_TAG, headers);
                 debugStatusCode(LOG_TAG, statusCode);
                 debugThrowable(LOG_TAG, e);
@@ -61,4 +63,3 @@ public class PostSample extends SampleParentActivity {
         };
     }
 }
-

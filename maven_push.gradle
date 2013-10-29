@@ -82,11 +82,7 @@ afterEvaluate { project ->
         sign configurations.archives
     }
 
-    task androidReleaseJar(type: Jar, dependsOn: assembleRelease) {
-        from "$buildDir/classes/release/"
-    }
-
-    task androidJavadocsJar(type: Jar) {
+    task androidJavadocsJar(type: Jar, dependsOn: generateReleaseJavadoc) {
         classifier = 'javadoc'
         from generateReleaseJavadoc.destinationDir
     }

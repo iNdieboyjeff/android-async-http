@@ -18,6 +18,8 @@
 
 package com.loopj.android.http;
 
+import android.util.Log;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -32,10 +34,10 @@ class AsyncHttpRequest implements Runnable {
     private final AbstractHttpClient client;
     private final HttpContext context;
     private final HttpUriRequest request;
-    private final AsyncHttpResponseHandler responseHandler;
+    private final ResponseHandlerInterface responseHandler;
     private int executionCount;
 
-    public AsyncHttpRequest(AbstractHttpClient client, HttpContext context, HttpUriRequest request, AsyncHttpResponseHandler responseHandler) {
+    public AsyncHttpRequest(AbstractHttpClient client, HttpContext context, HttpUriRequest request, ResponseHandlerInterface responseHandler) {
         this.client = client;
         this.context = context;
         this.request = request;
@@ -55,7 +57,7 @@ class AsyncHttpRequest implements Runnable {
                 responseHandler.sendFailureMessage(0, null, null, e);
             }
         }
-        
+
         if (responseHandler != null) {
             responseHandler.sendFinishMessage();
         }
@@ -83,8 +85,7 @@ class AsyncHttpRequest implements Runnable {
         boolean retry = true;
         IOException cause = null;
         HttpRequestRetryHandler retryHandler = client.getHttpRequestRetryHandler();
-        try
-        {
+        try {
             while (retry) {
                 try {
                     makeRequest();
@@ -105,16 +106,17 @@ class AsyncHttpRequest implements Runnable {
                     cause = e;
                     retry = retryHandler.retryRequest(cause, ++executionCount, context);
                 }
-                if(retry && (responseHandler != null)) {
+                if (retry && (responseHandler != null)) {
                     responseHandler.sendRetryMessage();
                 }
             }
         } catch (Exception e) {
             // catch anything else to ensure failure message is propagated
+            Log.e("AsyncHttpRequest", "Unhandled exception origin cause", e);
             cause = new IOException("Unhandled exception: " + e.getMessage());
         }
-        
+
         // cleaned up to throw IOException
-        throw(cause);
+        throw (cause);
     }
 }
