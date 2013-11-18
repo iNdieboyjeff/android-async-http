@@ -210,7 +210,7 @@ public class AsyncHttpClient {
 
         ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager(httpParams, schemeRegistry);
 
-        threadPool = Executors.newFixedThreadPool(DEFAULT_MAX_CONNECTIONS);
+        threadPool = Executors.newCachedThreadPool();
         requestMap = new WeakHashMap<Context, List<WeakReference<Future<?>>>>();
         clientHeaderMap = new HashMap<String, String>();
 
@@ -248,6 +248,18 @@ public class AsyncHttpClient {
         });
 
         httpClient.setHttpRequestRetryHandler(new RetryHandler(DEFAULT_MAX_RETRIES, DEFAULT_RETRY_SLEEP_TIME_MILLIS));
+    }
+
+    public static void allowRetryExceptionClass(Class<?> cls) {
+        if (cls != null) {
+            RetryHandler.addClassToWhitelist(cls);
+        }
+    }
+
+    public static void blockRetryExceptionClass(Class<?> cls) {
+        if (cls != null) {
+            RetryHandler.addClassToBlacklist(cls);
+        }
     }
 
     /**
