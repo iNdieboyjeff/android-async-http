@@ -4,6 +4,8 @@ import android.util.SparseArray;
 
 import com.loopj.android.http.AsyncHttpClient;
 import com.loopj.android.http.AsyncHttpResponseHandler;
+import com.loopj.android.http.RequestHandle;
+import com.loopj.android.http.ResponseHandlerInterface;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -11,31 +13,31 @@ import org.apache.http.HttpEntity;
 public class ThreadingTimeoutSample extends SampleParentActivity {
 
     private static final String LOG_TAG = "ThreadingTimeoutSample";
-    private SparseArray<String> states = new SparseArray<String>();
+    private SparseArray<String> states = new SparseArray<>();
     private int counter = 0;
 
     @Override
-    protected int getSampleTitle() {
-        return R.string.app_name;
+    public int getSampleTitle() {
+        return R.string.title_threading_timeout;
     }
 
     @Override
-    protected boolean isRequestBodyAllowed() {
+    public boolean isRequestBodyAllowed() {
         return false;
     }
 
     @Override
-    protected boolean isRequestHeadersAllowed() {
+    public boolean isRequestHeadersAllowed() {
         return false;
     }
 
     @Override
-    protected boolean isCancelButtonAllowed() {
+    public boolean isCancelButtonAllowed() {
         return true;
     }
 
     @Override
-    protected String getDefaultURL() {
+    public String getDefaultURL() {
         return "http://httpbin.org/delay/6";
     }
 
@@ -44,12 +46,12 @@ public class ThreadingTimeoutSample extends SampleParentActivity {
         states.put(id, current == null ? status : current + "," + status);
         clearOutputs();
         for (int i = 0; i < states.size(); i++) {
-            debugResponse(LOG_TAG, states.keyAt(i) + ": " + states.get(states.keyAt(i)));
+            debugResponse(LOG_TAG, String.format("%d (from %d): %s", states.keyAt(i), getCounter(), states.get(states.keyAt(i))));
         }
     }
 
     @Override
-    protected AsyncHttpResponseHandler getResponseHandler() {
+    public ResponseHandlerInterface getResponseHandler() {
         return new AsyncHttpResponseHandler() {
 
             private int id = counter++;
@@ -81,8 +83,12 @@ public class ThreadingTimeoutSample extends SampleParentActivity {
         };
     }
 
+    public int getCounter() {
+        return counter;
+    }
+
     @Override
-    protected void executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, AsyncHttpResponseHandler responseHandler) {
-        client.get(this, URL, headers, null, responseHandler);
+    public RequestHandle executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, ResponseHandlerInterface responseHandler) {
+        return client.get(this, URL, headers, null, responseHandler);
     }
 }

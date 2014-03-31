@@ -48,6 +48,7 @@ public class PersistentCookieStore implements CookieStore {
     private static final String COOKIE_PREFS = "CookiePrefsFile";
     private static final String COOKIE_NAME_STORE = "names";
     private static final String COOKIE_NAME_PREFIX = "cookie_";
+    private boolean omitNonPersistentCookies = false;
 
     private final ConcurrentHashMap<String, Cookie> cookies;
     private final SharedPreferences cookiePrefs;
@@ -59,7 +60,7 @@ public class PersistentCookieStore implements CookieStore {
      */
     public PersistentCookieStore(Context context) {
         cookiePrefs = context.getSharedPreferences(COOKIE_PREFS, 0);
-        cookies = new ConcurrentHashMap<String, Cookie>();
+        cookies = new ConcurrentHashMap<>();
 
         // Load any previously stored cookies into the store
         String storedCookieNames = cookiePrefs.getString(COOKIE_NAME_STORE, null);
@@ -82,6 +83,8 @@ public class PersistentCookieStore implements CookieStore {
 
     @Override
     public void addCookie(Cookie cookie) {
+        if (omitNonPersistentCookies && !cookie.isPersistent())
+            return;
         String name = cookie.getName() + cookie.getDomain();
 
         // Save cookie into local store, or remove if expired
@@ -143,7 +146,30 @@ public class PersistentCookieStore implements CookieStore {
 
     @Override
     public List<Cookie> getCookies() {
-        return new ArrayList<Cookie>(cookies.values());
+        return new ArrayList<>(cookies.values());
+    }
+
+    /**
+     * Will make PersistentCookieStore instance ignore Cookies, which are non-persistent by
+     * signature (`Cookie.isPersistent`)
+     *
+     * @param omitNonPersistentCookies true if non-persistent cookies should be omited
+     */
+    public void setOmitNonPersistentCookies(boolean omitNonPersistentCookies) {
+        this.omitNonPersistentCookies = omitNonPersistentCookies;
+    }
+
+    /**
+     * Non-standard helper method, to delete cookie
+     *
+     * @param cookie cookie to be removed
+     */
+    public void deleteCookie(Cookie cookie) {
+        String name = cookie.getName();
+        cookies.remove(name);
+        SharedPreferences.Editor prefsWriter = cookiePrefs.edit();
+        prefsWriter.remove(COOKIE_NAME_PREFIX + name);
+        prefsWriter.commit();
     }
 
     /**

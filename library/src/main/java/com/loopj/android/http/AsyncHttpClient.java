@@ -24,6 +24,7 @@ import android.util.Log;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpException;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpRequestInterceptor;
@@ -31,8 +32,11 @@ import org.apache.http.HttpResponse;
 import org.apache.http.HttpResponseInterceptor;
 import org.apache.http.HttpVersion;
 import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.AuthState;
+import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CookieStore;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
@@ -50,6 +54,7 @@ import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.entity.HttpEntityWrapper;
+import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.client.DefaultRedirectHandler;
 import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
@@ -58,11 +63,14 @@ import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.params.HttpParams;
 import org.apache.http.params.HttpProtocolParams;
 import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.SyncBasicHttpContext;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -210,8 +218,8 @@ public class AsyncHttpClient {
         ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager(httpParams, schemeRegistry);
 
         threadPool = Executors.newCachedThreadPool();
-        requestMap = new WeakHashMap<Context, List<RequestHandle>>();
-        clientHeaderMap = new HashMap<String, String>();
+        requestMap = new WeakHashMap<>();
+        clientHeaderMap = new HashMap<>();
 
         httpContext = new SyncBasicHttpContext(new BasicHttpContext());
         httpClient = new DefaultHttpClient(cm, httpParams);
@@ -222,6 +230,14 @@ public class AsyncHttpClient {
                     request.addHeader(HEADER_ACCEPT_ENCODING, ENCODING_GZIP);
                 }
                 for (String header : clientHeaderMap.keySet()) {
+                    if (request.containsHeader(header)) {
+                        Header overwritten = request.getFirstHeader(header);
+                        Log.d(LOG_TAG,
+                                String.format("Headers were overwritten! (%s | %s) overwrites (%s | %s)",
+                                        header, clientHeaderMap.get(header),
+                                        overwritten.getName(), overwritten.getValue())
+                        );
+                    }
                     request.addHeader(header, clientHeaderMap.get(header));
                 }
             }
@@ -245,6 +261,24 @@ public class AsyncHttpClient {
                 }
             }
         });
+
+        httpClient.addRequestInterceptor(new HttpRequestInterceptor() {
+            public void process(final HttpRequest request, final HttpContext context) throws HttpException, IOException {
+                AuthState authState = (AuthState) context.getAttribute(ClientContext.TARGET_AUTH_STATE);
+                CredentialsProvider credsProvider = (CredentialsProvider) context.getAttribute(
+                        ClientContext.CREDS_PROVIDER);
+                HttpHost targetHost = (HttpHost) context.getAttribute(ExecutionContext.HTTP_TARGET_HOST);
+
+                if (authState.getAuthScheme() == null) {
+                    AuthScope authScope = new AuthScope(targetHost.getHostName(), targetHost.getPort());
+                    Credentials creds = credsProvider.getCredentials(authScope);
+                    if (creds != null) {
+                        authState.setAuthScheme(new BasicScheme());
+                        authState.setCredentials(creds);
+                    }
+                }
+            }
+        }, 0);
 
         httpClient.setHttpRequestRetryHandler(new RetryHandler(DEFAULT_MAX_RETRIES, DEFAULT_RETRY_SLEEP_TIME_MILLIS));
     }
@@ -404,7 +438,6 @@ public class AsyncHttpClient {
         httpParams.setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
     }
 
-
     /**
      * Sets the SSLSocketFactory to user when making requests. By default, a new, default
      * SSLSocketFactory is used.
@@ -452,8 +485,19 @@ public class AsyncHttpClient {
      * @param password Basic Auth password
      */
     public void setBasicAuth(String username, String password) {
-        AuthScope scope = AuthScope.ANY;
-        setBasicAuth(username, password, scope);
+        setBasicAuth(username, password, false);
+    }
+
+    /**
+     * Sets basic authentication for the request. Uses AuthScope.ANY. This is the same as
+     * setBasicAuth('username','password',AuthScope.ANY)
+     *
+     * @param username  Basic Auth username
+     * @param password  Basic Auth password
+     * @param preemtive sets authorization in preemtive manner
+     */
+    public void setBasicAuth(String username, String password, boolean preemtive) {
+        setBasicAuth(username, password, null, preemtive);
     }
 
     /**
@@ -465,12 +509,40 @@ public class AsyncHttpClient {
      * @param scope    - an AuthScope object
      */
     public void setBasicAuth(String username, String password, AuthScope scope) {
-        UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(username, password);
-        this.httpClient.getCredentialsProvider().setCredentials(scope, credentials);
+        setBasicAuth(username, password, scope, false);
     }
 
     /**
-     * Removes set basic auth credentials
+     * Sets basic authentication for the request. You should pass in your AuthScope for security. It
+     * should be like this setBasicAuth("username","password", new AuthScope("host",port,AuthScope.ANY_REALM))
+     *
+     * @param username  Basic Auth username
+     * @param password  Basic Auth password
+     * @param scope     an AuthScope object
+     * @param preemtive sets authorization in preemtive manner
+     */
+    public void setBasicAuth(String username, String password, AuthScope scope, boolean preemtive) {
+        UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(username, password);
+        this.httpClient.getCredentialsProvider().setCredentials(scope == null ? AuthScope.ANY : scope, credentials);
+        setAuthenticationPreemptive(preemtive);
+    }
+
+    /**
+     * Sets HttpRequestInterceptor which handles authorization in preemtive way, as workaround you
+     * can use call `AsyncHttpClient.addHeader("Authorization","Basic base64OfUsernameAndPassword==")`
+     *
+     * @param isPreemtive whether the authorization is processed in preemtive way
+     */
+    public void setAuthenticationPreemptive(boolean isPreemtive) {
+        if (isPreemtive) {
+            httpClient.addRequestInterceptor(new PreemtiveAuthorizationHttpRequestInterceptor(), 0);
+        } else {
+            httpClient.removeRequestInterceptorByClass(PreemtiveAuthorizationHttpRequestInterceptor.class);
+        }
+    }
+
+    /**
+     * Removes previously set basic auth credentials
      */
     public void clearBasicAuth() {
         this.httpClient.getCredentialsProvider().clear();
@@ -494,6 +566,26 @@ public class AsyncHttpClient {
             }
             requestMap.remove(context);
         }
+    }
+
+    /**
+     * Cancels all pending (or potentially active) requests. <p>&nbsp;</p> <b>Note:</b> This will
+     * only affect requests which were created with a non-null android Context. This method is
+     * intended to be used in the onDestroy method of your android activities to destroy all
+     * requests which are no longer required.
+     *
+     * @param mayInterruptIfRunning specifies if active requests should be cancelled along with
+     *                              pending requests.
+     */
+    public void cancelAllRequests(boolean mayInterruptIfRunning) {
+        for (List<RequestHandle> requestList : requestMap.values()) {
+            if (requestList != null) {
+                for (RequestHandle requestHandle : requestList) {
+                    requestHandle.cancel(mayInterruptIfRunning);
+                }
+            }
+        }
+        requestMap.clear();
     }
 
     // [+] HTTP HEAD
@@ -688,7 +780,7 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     public RequestHandle post(Context context, String url, HttpEntity entity, String contentType, ResponseHandlerInterface responseHandler) {
-        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPost(url), entity), contentType, responseHandler, context);
+        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPost(URI.create(url).normalize()), entity), contentType, responseHandler, context);
     }
 
     /**
@@ -706,7 +798,7 @@ public class AsyncHttpClient {
      */
     public RequestHandle post(Context context, String url, Header[] headers, RequestParams params, String contentType,
                               ResponseHandlerInterface responseHandler) {
-        HttpEntityEnclosingRequestBase request = new HttpPost(url);
+        HttpEntityEnclosingRequestBase request = new HttpPost(URI.create(url).normalize());
         if (params != null) request.setEntity(paramsToEntity(params, responseHandler));
         if (headers != null) request.setHeaders(headers);
         return sendRequest(httpClient, httpContext, request, contentType,
@@ -730,7 +822,7 @@ public class AsyncHttpClient {
      */
     public RequestHandle post(Context context, String url, Header[] headers, HttpEntity entity, String contentType,
                               ResponseHandlerInterface responseHandler) {
-        HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPost(url), entity);
+        HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPost(URI.create(url).normalize()), entity);
         if (headers != null) request.setHeaders(headers);
         return sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
     }
@@ -789,7 +881,7 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     public RequestHandle put(Context context, String url, HttpEntity entity, String contentType, ResponseHandlerInterface responseHandler) {
-        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPut(url), entity), contentType, responseHandler, context);
+        return sendRequest(httpClient, httpContext, addEntityToRequestBase(new HttpPut(URI.create(url).normalize()), entity), contentType, responseHandler, context);
     }
 
     /**
@@ -808,7 +900,7 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     public RequestHandle put(Context context, String url, Header[] headers, HttpEntity entity, String contentType, ResponseHandlerInterface responseHandler) {
-        HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPut(url), entity);
+        HttpEntityEnclosingRequestBase request = addEntityToRequestBase(new HttpPut(URI.create(url).normalize()), entity);
         if (headers != null) request.setHeaders(headers);
         return sendRequest(httpClient, httpContext, request, contentType, responseHandler, context);
     }
@@ -836,7 +928,7 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     public RequestHandle delete(Context context, String url, ResponseHandlerInterface responseHandler) {
-        final HttpDelete delete = new HttpDelete(url);
+        final HttpDelete delete = new HttpDelete(URI.create(url).normalize());
         return sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
     }
 
@@ -850,7 +942,7 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     public RequestHandle delete(Context context, String url, Header[] headers, ResponseHandlerInterface responseHandler) {
-        final HttpDelete delete = new HttpDelete(url);
+        final HttpDelete delete = new HttpDelete(URI.create(url).normalize());
         if (headers != null) delete.setHeaders(headers);
         return sendRequest(httpClient, httpContext, delete, null, responseHandler, context);
     }
@@ -886,6 +978,18 @@ public class AsyncHttpClient {
      * @return RequestHandle of future request process
      */
     protected RequestHandle sendRequest(DefaultHttpClient client, HttpContext httpContext, HttpUriRequest uriRequest, String contentType, ResponseHandlerInterface responseHandler, Context context) {
+        if (uriRequest == null) {
+            throw new IllegalArgumentException("HttpUriRequest must not be null");
+        }
+
+        if (responseHandler == null) {
+            throw new IllegalArgumentException("ResponseHandler must not be null");
+        }
+
+        if (responseHandler.getUseSynchronousMode()) {
+            throw new IllegalArgumentException("Synchronous ResponseHandler used in AsyncHttpClient. You should create your response handler in a looper thread or use SyncHttpClient instead.");
+        }
+
         if (contentType != null) {
             uriRequest.setHeader("Content-Type", contentType);
         }
@@ -901,9 +1005,12 @@ public class AsyncHttpClient {
             // Add request to request map
             List<RequestHandle> requestList = requestMap.get(context);
             if (requestList == null) {
-                requestList = new LinkedList<RequestHandle>();
+                requestList = new LinkedList<>();
                 requestMap.put(context, requestList);
             }
+
+            if (responseHandler instanceof RangeFileAsyncHttpResponseHandler)
+                ((RangeFileAsyncHttpResponseHandler) responseHandler).updateRequestHeaders(uriRequest);
 
             requestList.add(requestHandle);
 
@@ -954,6 +1061,36 @@ public class AsyncHttpClient {
         }
 
         return url;
+    }
+
+    /**
+     * A utility function to close an input stream without raising an exception.
+     *
+     * @param is input stream to close safely
+     */
+    public static void silentCloseInputStream(InputStream is) {
+        try {
+            if (is != null) {
+                is.close();
+            }
+        } catch (IOException e) {
+            Log.w(LOG_TAG, "Cannot close input stream", e);
+        }
+    }
+
+    /**
+     * A utility function to close an output stream without raising an exception.
+     *
+     * @param os output stream to close safely
+     */
+    public static void silentCloseOutputStream(OutputStream os) {
+        try {
+            if (os != null) {
+                os.close();
+            }
+        } catch (IOException e) {
+            Log.w(LOG_TAG, "Cannot close output stream", e);
+        }
     }
 
     /**

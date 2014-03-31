@@ -2,6 +2,8 @@ package com.loopj.android.http.sample;
 
 import com.loopj.android.http.AsyncHttpClient;
 import com.loopj.android.http.AsyncHttpResponseHandler;
+import com.loopj.android.http.RequestHandle;
+import com.loopj.android.http.ResponseHandlerInterface;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -10,32 +12,32 @@ public class PostSample extends SampleParentActivity {
     private static final String LOG_TAG = "PostSample";
 
     @Override
-    protected void executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, AsyncHttpResponseHandler responseHandler) {
-        client.post(this, URL, headers, entity, null, responseHandler);
+    public RequestHandle executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, ResponseHandlerInterface responseHandler) {
+        return client.post(this, URL, headers, entity, null, responseHandler);
     }
 
     @Override
-    protected int getSampleTitle() {
+    public int getSampleTitle() {
         return R.string.title_post_sample;
     }
 
     @Override
-    protected boolean isRequestBodyAllowed() {
+    public boolean isRequestBodyAllowed() {
         return true;
     }
 
     @Override
-    protected boolean isRequestHeadersAllowed() {
+    public boolean isRequestHeadersAllowed() {
         return true;
     }
 
     @Override
-    protected String getDefaultURL() {
+    public String getDefaultURL() {
         return "http://httpbin.org/post";
     }
 
     @Override
-    protected AsyncHttpResponseHandler getResponseHandler() {
+    public ResponseHandlerInterface getResponseHandler() {
         return new AsyncHttpResponseHandler() {
 
             @Override
@@ -51,7 +53,7 @@ public class PostSample extends SampleParentActivity {
             }
 
             @Override
-            public void onFailure(int statusCode, Header[] headers,	byte[] errorResponse, Throwable e) {
+            public void onFailure(int statusCode, Header[] headers, byte[] errorResponse, Throwable e) {
                 debugHeaders(LOG_TAG, headers);
                 debugStatusCode(LOG_TAG, statusCode);
                 debugThrowable(LOG_TAG, e);

@@ -9,12 +9,12 @@ import android.widget.ListView;
 
 public class WaypointsActivity extends ListActivity {
 
-    private static final String[] samples = new String[]{"GET", "POST", "DELETE", "PUT", "JSON", "FILE", "BINARY", "THREADING TIMEOUTS"};
+    private static final String[] samples = new String[]{"GET", "POST", "DELETE", "PUT", "JSON", "FILE", "BINARY", "THREADING TIMEOUTS", "CANCEL ALL REQUESTS", "CANCEL REQUEST HANDLE", "SYNCHRONOUS CLIENT"};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setListAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, samples));
+        setListAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, samples));
     }
 
     @Override
@@ -45,6 +45,15 @@ public class WaypointsActivity extends ListActivity {
                 break;
             case 7:
                 targetClass = ThreadingTimeoutSample.class;
+                break;
+            case 8:
+                targetClass = CancelAllRequestsSample.class;
+                break;
+            case 9:
+                targetClass = CancelRequestHandleSample.class;
+                break;
+            case 10:
+                targetClass = SynchronousClientSample.class;
                 break;
         }
         if (targetClass != null)

@@ -1,8 +1,10 @@
+import com.android.builder.BuilderConstants
+
 apply plugin: 'android-library'
 
 android {
     compileSdkVersion 19
-    buildToolsVersion '19.0.1'
+    buildToolsVersion '19.0.3'
 
     defaultConfig {
         minSdkVersion 3
@@ -12,11 +14,16 @@ android {
     lintOptions {
         abortOnError false
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
 }
 
 android.libraryVariants.all { variant ->
   def name = variant.buildType.name
-  if (name.equals(com.android.builder.BuilderConstants.DEBUG)) {
+  if (name.equals(BuilderConstants.DEBUG)) {
     return; // Skip debug builds.
   }
   def task = project.tasks.create "android${name.capitalize()}Jar", Jar
@@ -27,7 +34,7 @@ android.libraryVariants.all { variant ->
 
 android.libraryVariants.all { variant ->
 
-    task("generate${variant.name}Javadoc", type: Javadoc) {
+    task("generate${variant.name.capitalize()}Javadoc", type: Javadoc) {
         description "Generates Javadoc for $variant.name."
         source = variant.javaCompile.source
         ext.androidJar = "${android.plugin.sdkDirectory}/platforms/${android.compileSdkVersion}/android.jar"

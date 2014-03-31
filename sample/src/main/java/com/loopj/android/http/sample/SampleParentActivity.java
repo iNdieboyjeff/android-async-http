@@ -12,7 +12,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.loopj.android.http.AsyncHttpClient;
-import com.loopj.android.http.AsyncHttpResponseHandler;
+import com.loopj.android.http.RequestHandle;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -23,14 +23,16 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 
-public abstract class SampleParentActivity extends Activity {
+public abstract class SampleParentActivity extends Activity implements SampleInterface {
 
     private AsyncHttpClient asyncHttpClient = new AsyncHttpClient();
     private EditText urlEditText, headersEditText, bodyEditText;
     private LinearLayout responseLayout;
+    private final List<RequestHandle> requestHandles = new LinkedList<>();
 
     private static final int LIGHTGREEN = Color.parseColor("#00FF66");
     private static final int LIGHTRED = Color.parseColor("#FF3300");
@@ -58,32 +60,55 @@ public abstract class SampleParentActivity extends Activity {
         headersLayout.setVisibility(isRequestHeadersAllowed() ? View.VISIBLE : View.GONE);
 
         runButton.setOnClickListener(onClickListener);
-        if (isCancelButtonAllowed() && cancelButton != null) {
-            cancelButton.setVisibility(View.VISIBLE);
-            cancelButton.setOnClickListener(onClickListener);
+        if (cancelButton != null) {
+            if (isCancelButtonAllowed()) {
+                cancelButton.setVisibility(View.VISIBLE);
+                cancelButton.setOnClickListener(onClickListener);
+            } else {
+                cancelButton.setEnabled(false);
+            }
         }
     }
 
-    private View.OnClickListener onClickListener = new View.OnClickListener() {
+    public List<RequestHandle> getRequestHandles() {
+        return requestHandles;
+    }
+
+    @Override
+    public void addRequestHandle(RequestHandle handle) {
+        if (null != handle) {
+            requestHandles.add(handle);
+        }
+    }
+
+    public void onRunButtonPressed() {
+        addRequestHandle(executeSample(getAsyncHttpClient(),
+                (urlEditText == null || urlEditText.getText() == null) ? getDefaultURL() : urlEditText.getText().toString(),
+                getRequestHeaders(),
+                getRequestEntity(),
+                getResponseHandler()));
+    }
+
+    public void onCancelButtonPressed() {
+        asyncHttpClient.cancelRequests(SampleParentActivity.this, true);
+    }
+
+    protected View.OnClickListener onClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
             switch (v.getId()) {
                 case R.id.button_run:
-                    executeSample(getAsyncHttpClient(),
-                            (urlEditText == null || urlEditText.getText() == null) ? getDefaultURL() : urlEditText.getText().toString(),
-                            getRequestHeaders(),
-                            getRequestEntity(),
-                            getResponseHandler());
+                    onRunButtonPressed();
                     break;
                 case R.id.button_cancel:
-                    asyncHttpClient.cancelRequests(SampleParentActivity.this, true);
+                    onCancelButtonPressed();
                     break;
             }
         }
     };
 
-    protected Header[] getRequestHeaders() {
-        List<Header> headers = new ArrayList<Header>();
+    public Header[] getRequestHeaders() {
+        List<Header> headers = new ArrayList<>();
         String headersRaw = headersEditText.getText() == null ? null : headersEditText.getText().toString();
 
         if (headersRaw != null && headersRaw.length() > 3) {
@@ -102,7 +127,7 @@ public abstract class SampleParentActivity extends Activity {
         return headers.toArray(new Header[headers.size()]);
     }
 
-    protected HttpEntity getRequestEntity() {
+    public HttpEntity getRequestEntity() {
         if (isRequestBodyAllowed() && bodyEditText.getText() != null) {
             try {
                 return new StringEntity(bodyEditText.getText().toString());
@@ -162,7 +187,7 @@ public abstract class SampleParentActivity extends Activity {
         return y >= 128 ? Color.BLACK : Color.WHITE;
     }
 
-    private View getColoredView(int bgColor, String msg) {
+    protected View getColoredView(int bgColor, String msg) {
         TextView tv = new TextView(this);
         tv.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         tv.setText(msg);
@@ -180,23 +205,16 @@ public abstract class SampleParentActivity extends Activity {
         responseLayout.removeAllViews();
     }
 
-    protected boolean isCancelButtonAllowed() {
+    public boolean isCancelButtonAllowed() {
         return false;
     }
 
-    protected abstract int getSampleTitle();
-
-    protected abstract boolean isRequestBodyAllowed();
-
-    protected abstract boolean isRequestHeadersAllowed();
-
-    protected abstract String getDefaultURL();
-
-    protected abstract AsyncHttpResponseHandler getResponseHandler();
-
-    protected AsyncHttpClient getAsyncHttpClient() {
+    public AsyncHttpClient getAsyncHttpClient() {
         return this.asyncHttpClient;
     }
 
-    protected abstract void executeSample(AsyncHttpClient client, String URL, Header[] headers, HttpEntity entity, AsyncHttpResponseHandler responseHandler);
+    @Override
+    public void setAsyncHttpClient(AsyncHttpClient client) {
+        this.asyncHttpClient = client;
+    }
 }
